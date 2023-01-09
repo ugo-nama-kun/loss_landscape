@@ -26,7 +26,7 @@ data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
 
 class Encoder(nn.Module):
     
-    def __init__(self, latent_dim):
+    def __init__(self, latent_dim, enable_bn):
         super(Encoder, self).__init__()
         
         self.cnn = nn.Sequential(
@@ -38,6 +38,13 @@ class Encoder(nn.Module):
             nn.ELU(True),
             nn.Conv2d(256, 512, 3, stride=2, padding=0),
             nn.BatchNorm2d(512),
+            nn.ELU(True),
+        ) if enable_bn else nn.Sequential(
+            nn.Conv2d(3, 128, 3, stride=2, padding=1),
+            nn.ELU(True),
+            nn.Conv2d(128, 256, 3, stride=2, padding=1),
+            nn.ELU(True),
+            nn.Conv2d(256, 512, 3, stride=2, padding=0),
             nn.ELU(True),
         )
         
@@ -59,7 +66,7 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     
-    def __init__(self, latent_dim):
+    def __init__(self, latent_dim, enable_bn):
         super(Decoder, self).__init__()
         
         self.fc = nn.Sequential(
@@ -68,6 +75,11 @@ class Decoder(nn.Module):
             nn.ELU(True),
             nn.Linear(128, 3 * 3 * 512),
             nn.BatchNorm1d(3 * 3 * 512),
+            nn.ELU(True)
+        ) if enable_bn else nn.Sequential(
+            nn.Linear(latent_dim, 128),
+            nn.ELU(True),
+            nn.Linear(128, 3 * 3 * 512),
             nn.ELU(True)
         )
         
@@ -79,6 +91,12 @@ class Decoder(nn.Module):
             nn.ELU(True),
             nn.ConvTranspose2d(256, 128, 3, stride=2, padding=1, output_padding=1),
             nn.BatchNorm2d(128),
+            nn.ELU(True),
+            nn.ConvTranspose2d(128, 3, 3, stride=2, padding=1, output_padding=1)
+        ) if enable_bn else nn.Sequential(
+            nn.ConvTranspose2d(512, 256, 4, stride=2, output_padding=0),
+            nn.ELU(True),
+            nn.ConvTranspose2d(256, 128, 3, stride=2, padding=1, output_padding=1),
             nn.ELU(True),
             nn.ConvTranspose2d(128, 3, 3, stride=2, padding=1, output_padding=1)
         )
@@ -93,7 +111,7 @@ class Decoder(nn.Module):
 
 class EncoderSmall(nn.Module):
     
-    def __init__(self, latent_dim):
+    def __init__(self, latent_dim, enable_bn):
         super(EncoderSmall, self).__init__()
         
         self.cnn = nn.Sequential(
@@ -105,6 +123,13 @@ class EncoderSmall(nn.Module):
             nn.ELU(True),
             nn.Conv2d(5, 5, 3, stride=2, padding=0),
             nn.BatchNorm2d(5),
+            nn.ELU(True),
+        ) if enable_bn else nn.Sequential(
+            nn.Conv2d(3, 5, 3, stride=2, padding=1),
+            nn.ELU(True),
+            nn.Conv2d(5, 5, 3, stride=2, padding=1),
+            nn.ELU(True),
+            nn.Conv2d(5, 5, 3, stride=2, padding=0),
             nn.ELU(True),
         )
         
@@ -126,7 +151,7 @@ class EncoderSmall(nn.Module):
 
 class DecoderSmall(nn.Module):
     
-    def __init__(self, latent_dim):
+    def __init__(self, latent_dim, enable_bn):
         super(DecoderSmall, self).__init__()
         
         self.fc = nn.Sequential(
@@ -135,6 +160,11 @@ class DecoderSmall(nn.Module):
             nn.ELU(True),
             nn.Linear(5, 3 * 3 * 5),
             nn.BatchNorm1d(3 * 3 * 5),
+            nn.ELU(True)
+        ) if enable_bn else nn.Sequential(
+            nn.Linear(latent_dim, 5),
+            nn.ELU(True),
+            nn.Linear(5, 3 * 3 * 5),
             nn.ELU(True)
         )
         
@@ -148,6 +178,12 @@ class DecoderSmall(nn.Module):
             nn.BatchNorm2d(5),
             nn.ELU(True),
             nn.ConvTranspose2d(5, 3, 3, stride=2, padding=1, output_padding=1)
+        ) if enable_bn else nn.Sequential(
+            nn.ConvTranspose2d(5, 5, 4, stride=2, output_padding=0),
+            nn.ELU(True),
+            nn.ConvTranspose2d(5, 5, 3, stride=2, padding=1, output_padding=1),
+            nn.ELU(True),
+            nn.ConvTranspose2d(5, 3, 3, stride=2, padding=1, output_padding=1)
         )
     
     def forward(self, x):
@@ -159,11 +195,11 @@ class DecoderSmall(nn.Module):
 
 
 class AE(nn.Module):
-    def __init__(self, small=True):
+    def __init__(self, small=True, enable_bn=True):
         super(AE, self).__init__()
         d = 256
-        self.encoder = EncoderSmall(latent_dim=d).to(device) if small else EncoderSmall(latent_dim=d).to(device)
-        self.decoder = DecoderSmall(latent_dim=d).to(device) if small else Decoder(latent_dim=d).to(device)
+        self.encoder = EncoderSmall(latent_dim=d, enable_bn=enable_bn).to(device) if small else EncoderSmall(latent_dim=d, enable_bn=enable_bn).to(device)
+        self.decoder = DecoderSmall(latent_dim=d, enable_bn=enable_bn).to(device) if small else Decoder(latent_dim=d, enable_bn=enable_bn).to(device)
     
     def forward(self, batch):
         latent = self.encoder(batch)
@@ -181,8 +217,8 @@ torch.manual_seed(0)
 data_batch, _ = next(iter(data_loader))
 data_batch = data_batch.to(device)
 
-model = AE().to(device)
-target_model = AE().to(device)
+model = AE(enable_bn=True, small=True).to(device)
+target_model = AE(enable_bn=True, small=True).to(device)
 target_model.load_state_dict(model.state_dict())
 
 scale = 1
